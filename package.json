@@ -1,14 +1,15 @@
 {
-  "name"         : "client-sessions",
+  "name"         : "jwt-sessions",
   "version"      : "0.7.0",
   "description"  : "secure sessions stored in cookies",
-  "main"         : "lib/client-sessions",
+  "main"         : "lib/jwt-sessions",
   "repository" : {
     "type" : "git",
-    "url"  : "https://github.com/mozilla/node-client-sessions"
+    "url"  : "https://github.com/teamookla/node-jwt-sessions"
   },
   "dependencies" : {
-    "cookies" : "0.5.0"
+    "cookies" : "0.5.0",
+    "jwt-simple" : "^0.3.0"
   },
   "devDependencies": {
     "vows": "0.7.0",
@@ -16,8 +17,8 @@
     "request": "2.42.0"
   },
   "author" : {
-    "name"  : "Ben Adida",
-    "email" : "ben@adida.net"
+    "name"  : "Matt Tucker",
+    "email" : "matt@ookla.com"
   },
   "scripts" : {
     "test": "vows --spec"
@@ -27,7 +28,7 @@
   },
   "licenses": {
     "type": "MPL 2.0",
-    "url": "https://raw.github.com/mozilla/node-client-sessions/master/LICENSE"
+    "url": "https://raw.github.com/teamookla/node-jwt-sessions/master/LICENSE"
   },
-  "bugs": "https://github.com/mozilla/node-client-sessions/issues"
+  "bugs": "https://github.com/teamookla/node-jwt-sessions/issues"
 }

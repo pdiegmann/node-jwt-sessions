@@ -5,7 +5,7 @@ process.env.NODE_ENV = 'test';
 
 var vows = require("vows"),
     assert = require("assert"),
-    cookieSessions = require("../lib/client-sessions"),
+    jwtSessions = require("../lib/jwt-sessions"),
     express = require("express"),
     request = require("request");
 
@@ -18,7 +18,7 @@ process.on('uncaughtException', function(err) {
 function create_app() {
   // set up the session middleware
   // XXX: same secret is important for a test
-  var middleware = cookieSessions({
+  var middleware = jwtSessions({
     cookieName: 'session',
     secret: 'yo',
     activeDuration: 0,
@@ -31,7 +31,7 @@ function create_app() {
   app.use(middleware);
 
   // set up a second cookie storage middleware
-  var secureStoreMiddleware = cookieSessions({
+  var secureStoreMiddleware = jwtSessions({
     cookieName: 'securestore',
     secret: 'yo',
     activeDuration: 0,
@@ -88,13 +88,13 @@ function createBrowser(server) {
   return browser;
 }
 
-var suite = vows.describe('client-sessions');
+var suite = vows.describe('jwt-sessions');
 
 suite.addBatch({
   "middleware" : {
     topic: function() {
       var self = this;
-      var middleware = cookieSessions({
+      var middleware = jwtSessions({
         cookieName: 'session',
         secret: 'yo',
         activeDuration: 0,
@@ -439,7 +439,7 @@ suite.addBatch({
 function create_app_with_duration() {
   // simple app
   var app = express.createServer();
-  app.use(cookieSessions({
+  app.use(jwtSessions({
     cookieName: 'session',
     secret: 'yo',
     activeDuration: 0,
@@ -607,7 +607,7 @@ function create_app_with_duration_modification() {
   // simple app
   var app = express.createServer();
 
-  app.use(cookieSessions({
+  app.use(jwtSessions({
     cookieName: 'session',
     secret: 'yobaby',
     activeDuration: 0,
@@ -686,14 +686,24 @@ suite.addBatch({
     "doesn't affect session variables": function(err, req) {
       assert.equal(req.session.foo, "foo");
     },
-    "does update creation time": function(err, req) {
-      assert.notEqual(initialCookie.split('.')[2],
-                      updatedCookie.split('.')[2],
+    "does update creation time": function(req) {
+      var opts = {
+        secret: 'yobaby',
+        cookieName: 'session'
+      };
+      assert.notEqual(jwtSessions.util.decode(opts, initialCookie).createdAt,
+                      jwtSessions.util.decode(opts, updatedCookie).createdAt,
                       "after duration update, creation should be updated");
     },
     "does update duration": function(err, req) {
-      assert.strictEqual(parseInt(initialCookie.split('.')[3], 10), 5000);
-      assert.strictEqual(parseInt(updatedCookie.split('.')[3], 10), 500);
+      var opts = {
+        secret: 'yobaby',
+        cookieName: 'session'
+      };
+      var initialDuration = jwtSessions.util.decode(opts, initialCookie).duration;
+      var updatedDuration = jwtSessions.util.decode(opts, updatedCookie).duration;
+      assert.strictEqual(initialDuration, 5000);
+      assert.strictEqual(updatedDuration, 500);
     }
   }
 });
@@ -791,7 +801,7 @@ suite.addBatch({
 
 function create_app_with_secure(firstMiddleware) {
   // set up the session middleware
-  var middleware = cookieSessions({
+  var middleware = jwtSessions({
     cookieName: 'session',
     secret: 'yo',
     activeDuration: 0,
@@ -861,68 +871,6 @@ suite.addBatch({
 
 
 suite.addBatch({
-  "public encode and decode util methods" : {
-    topic: function() {
-      var self = this;
-
-      var app = create_app();
-      app.get("/foo", function(req, res) {
-        self.callback(null, req);
-        res.send("hello");
-      });
-
-      var browser = createBrowser(app);
-      browser.get("/foo", function(res, $) {});
-    },
-    "encode " : function(err, req){
-      var result = cookieSessions.util.encode({cookieName: 'session', secret: 'yo'}, {foo:'bar'});
-      var result_arr = result.split(".");
-      assert.equal(result_arr.length, 5);
-    },
-    "encode and decode - is object" : function(err, req){
-      var encoded = cookieSessions.util.encode({cookieName: 'session', secret: 'yo'}, {foo:'bar'});
-      var decoded = cookieSessions.util.decode({cookieName: 'session', secret: 'yo'}, encoded);
-      assert.isObject(decoded);
-    },
-    "encode and decode - has all values" : function(err, req){
-      var encoded = cookieSessions.util.encode({cookieName: 'session', secret: 'yo'}, {foo:'bar', bar:'foo'});
-      var decoded = cookieSessions.util.decode({cookieName: 'session', secret: 'yo'}, encoded);
-      assert.equal(decoded.content.foo, 'bar');
-      assert.equal(decoded.content.bar, 'foo');
-      assert.isNumber(decoded.duration);
-      assert.isNumber(decoded.createdAt);
-    },
-    "encode and decode - override duration and createdAt" : function(err, req){
-      var encoded = cookieSessions.util.encode({cookieName: 'session', secret: 'yo'}, {foo:'bar', bar:'foo'}, 5000, 1355408039221);
-      var decoded = cookieSessions.util.decode({cookieName: 'session', secret: 'yo'}, encoded);
-      assert.equal(decoded.duration, 5000);
-      assert.equal(decoded.createdAt, 1355408039221);
-    },
-    "encode and decode - default duration" : function(err, req){
-      var encoded = cookieSessions.util.encode({cookieName: 'session', secret: 'yo'}, {foo:'bar'});
-      var decoded = cookieSessions.util.decode({cookieName: 'session', secret: 'yo'}, encoded);
-      assert.equal(decoded.duration, 86400000);
-    },
-    "encode and decode - tampered HMAC" : function(err, req){
-      var encodedReal = 'LVB3G2lnPF75RzsT9mz7jQ.RT1Lcq0dOJ_DMRHyWJ4NZPjBXr2WzkFcUC4NO78gbCQ.1371704898483.5000.ILEusgnajT1sqCWLuzaUt-HFn2KPjYNd38DhI7aRCb9';
-      var encodedFake = encodedReal.substring(0, encodedReal.length - 1) + 'A';
-
-      var decodedReal = cookieSessions.util.decode({cookieName: 'session', secret: 'yo'}, encodedReal);
-      assert.isObject(decodedReal);
-      var decodedFake = cookieSessions.util.decode({cookieName: 'session', secret: 'yo'}, encodedFake);
-      assert.isUndefined(decodedFake);
-    },
-    "decode - invalid input" : function(err, req){
-        var notEnoughComponents = 'LVB3G2lnPF75RzsT9mz7jQ.RT1Lcq0dOJ_DMRHyWJ4NZPjBXr2WzkFcUC4NO78gbCQ.1371704898483.5000';
-        assert.isUndefined(cookieSessions.util.decode({cookieName: 'session', secret: 'yo'}, notEnoughComponents));
-
-        var invalidBase64 = 'LVB3G2lnPF75RzsT9mz7jQ.RT1Lcq0dOJ_DMRHyWJ4NZPjBXr2WzkFcUC4NO78gb.1371704898483.5000.ILEusgnajT1sqCWLuzaUt-HFn2KPjYNd38DhI7aRCb9';
-        assert.isUndefined(cookieSessions.util.decode({cookieName: 'session', secret: 'yo'}, invalidBase64));
-    }
-  }
-});
-
-suite.addBatch({
   "two middlewares": {
     topic: function() {
       var self = this;
@@ -954,7 +902,7 @@ suite.addBatch({
       var self = this;
 
       var app = express.createServer();
-      app.use(cookieSessions({
+      app.use(jwtSessions({
         cookieName: 'ooga_booga_momma',
         activeDuration: 0,
         requestKey: 'ses',
@@ -1010,7 +958,7 @@ suite.addBatch({
         var secondHijack = getCookieName(secondCookie) + getCookieValue(firstCookie);
 
         createBrowser(app).get('/bar', {
-            headers: { 'Cookie': firstHijack + '; ' + secondHijack } 
+            headers: { 'Cookie': firstHijack + '; ' + secondHijack }
         }, function(res, $){});
 
       });
@@ -1031,7 +979,7 @@ suite.addBatch({
       var self = this;
 
       var app = express.createServer();
-      app.use(cookieSessions({
+      app.use(jwtSessions({
         cookieName: 'session',
         duration: 50000,
         activeDuration: 0,
@@ -1063,7 +1011,7 @@ suite.addBatch({
       var self = this;
 
       var app = express.createServer();
-      app.use(cookieSessions({
+      app.use(jwtSessions({
         cookieName: 'session',
         duration: 500,
         activeDuration: 0,
@@ -1100,7 +1048,7 @@ suite.addBatch({
     topic: function() {
       var app = express.createServer();
       var self = this;
-      app.use(cookieSessions({
+      app.use(jwtSessions({
         cookieName: 'session',
         duration: 300,
         activeDuration: 500,
@@ -1153,7 +1101,7 @@ suite.addBatch({
       var self = this;
 
       var app = express.createServer();
-      app.use(cookieSessions({
+      app.use(jwtSessions({
         cookieName: 'session',
         duration: 5000,
         secret: 'yo',
@@ -1197,7 +1145,7 @@ suite.addBatch({
       var self = this;
 
       var app = express.createServer();
-      app.use(cookieSessions({
+      app.use(jwtSessions({
         cookieName: 'session',
         duration: 50000,
         activeDuration: 0,
@@ -1236,61 +1184,6 @@ suite.addBatch({
         assert.match(res.headers['set-cookie'][0], /expires/, "cookie is a session cookie");
       }
     }
-  }
-});
-
-var sixtyFourByteKey = new Buffer(
-  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-  'binary'
-);
-var HMAC_EXPECT = {
-  // aligned so you can see the dropN effect:
-  'sha256':
-    'PRYaxV/8RkMyIT/Ib+tIUOWiSn+0EvodJ5rtG1FQHz0=',
-  'sha256-drop128':
-    'PRYaxV/8RkMyIT/Ib+tIUA==',
-  'sha384':
-    'MND9nz6pxbQC5m41ZPRXhJIuqTj9/hu4gtWZ8t8LgdFLQFWQfC8jhijB0NHLpeA7',
-  'sha384-drop192':
-    'MND9nz6pxbQC5m41ZPRXhJIuqTj9/hu4',
-  'sha512':
-    'Hr4KLVLyglIwQ43C9U2bmieWBVLnD/F+lzCSF072Ds2b87MK+gbnR0p75A+I+5ez+aiemMGuMZyKVAUWfMMaUA==',
-  'sha512-drop256':
-    'Hr4KLVLyglIwQ43C9U2bmieWBVLnD/F+lzCSF072Ds0='
-};
-
-function testHmac(algo) {
-  var block = {};
-  block.topic = function() {
-    var opts = {
-      signatureAlgorithm: algo,
-      signatureKey: sixtyFourByteKey
-    };
-    var iv = new Buffer('01234567890abcdef','binary'); // 128-bits
-    var ciphertext = new Buffer('0123456789abcdef0123','binary');
-    var duration = 876543210;
-    var createdAt = 1234567890;
-
-    return cookieSessions.util.computeHmac(
-      opts, iv, ciphertext, duration, createdAt
-    ).toString('base64');
-  };
-
-  block['equals test vector'] = function(val) {
-    assert.equal(val, HMAC_EXPECT[algo]);
-  };
-
-  return block;
-}
-
-suite.addBatch({
-  "computeHmac": {
-    "sha256": testHmac('sha256'),
-    "sha256-drop128": testHmac('sha256-drop128'),
-    "sha384": testHmac('sha384'),
-    "sha384-drop192": testHmac('sha384-drop192'),
-    "sha512": testHmac('sha512'),
-    "sha512-drop256": testHmac('sha512-drop256'),
   }
 });
 
